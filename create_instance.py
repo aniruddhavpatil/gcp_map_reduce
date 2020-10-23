@@ -27,7 +27,7 @@ def list_machine_images(compute, project):
 
 
 def create_instance(compute, project, zone, name, bucket):
-    image_response = compute.machineImages().get(project=project, machineImage="map-reduce-image").execute()
+    image_response = compute.machineImages().get(project=project, machineImage="store-image").execute()
     source_disk_image = image_response['selfLink']
 
     # Configure the machine
@@ -70,11 +70,11 @@ def create_instance(compute, project, zone, name, bucket):
         #         'https://www.googleapis.com/auth/logging.write'
         #     ]
         # }],
-        'scheduling': {
-            'preemptible': True,
-            'automaticRestart': False,
-            'onHostMaintenance': 'TERMINATE'
-        },
+        # 'scheduling': {
+        #     'preemptible': True,
+        #     'automaticRestart': False,
+        #     'onHostMaintenance': 'TERMINATE'
+        # },
 
         # Metadata is readable from the instance and allows you to
         # pass configuration from deployment scripts to instances.
@@ -145,6 +145,8 @@ def wait_for_operation(compute, project, zone, operation):
 # [START run]
 def main(project, bucket, zone, instance_name, wait=True):
     compute = googleapiclient.discovery.build('compute', 'beta')
+    # print(list_instances(compute, project, zone))
+    # sys.exit()
 
     print('Creating instance.')
 

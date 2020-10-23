@@ -1,8 +1,7 @@
 #!/bin/bash
 
 cd ~
-git clone https://github.com/aniruddhavpatil/map_reduce.git
-cd map_reduce
-mkdir hello
-cd hello
-echo "World" > World
+rm -rf gcp_map_reduce
+git clone https://github.com/aniruddhavpatil/gcp_map_reduce.git
+cd gcp_map_reduce
+python3 simple_key_value_store/Server.py

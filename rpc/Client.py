@@ -25,8 +25,8 @@ class Client:
             
 
 def main():
-    client = Client(('localhost', 8000))  
-    # client.run('kill') 
+    client = Client(('34.123.134.188', 8000))  
+    client.run('hello') 
     
 if __name__ == '__main__':
     main()

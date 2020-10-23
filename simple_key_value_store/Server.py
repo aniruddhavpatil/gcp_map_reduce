@@ -8,6 +8,7 @@ import threading
 
 class Server(object):
     def __init__(self, networkConfig=('localhost', 12345), debug=False):
+        self.networkConfig = networkConfig
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(None)
         self.socket.bind(networkConfig)
@@ -146,7 +147,7 @@ class Server(object):
 
     def run(self):
         self.socket.listen(5)
-        print("socket is listening")
+        print("Socket is listening at", self.networkConfig)
         while True:
             connection, addr = self.socket.accept()
             print('Got connection from', addr)

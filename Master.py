@@ -28,6 +28,11 @@ class Master:
         self.reducers = []
         self.splits = {}
 
+    def set_attribute(self, attribute, value):
+        attribute = self.__getattribute__(attribute)
+        attribute = value
+        return True
+
 
     def input_partition(self, files, n):
         for f in files:
@@ -156,7 +161,7 @@ def main():
     module = importlib.import_module('word_count_reduce')
     reduce_fn = getattr(module, 'reduce_fn')
     master = Master(('localhost', 8000), [myFunc], 4, 4, map_fn, reduce_fn)
-    master.run()
+    # master.run()
 
 if __name__ == "__main__":
     main()

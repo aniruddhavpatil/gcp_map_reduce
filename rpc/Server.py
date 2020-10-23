@@ -24,7 +24,7 @@ class Server(object):
 
 
 def main():
-    server = Server(('localhost', 8000))
+    server = Server(('localhost', 8000), [])
 
 
 if __name__ == '__main__':
