@@ -1,7 +1,7 @@
 import xmlrpc.client
 
 class Client:
-    def __init__(self, networkConfig):
+    def __init__(self, networkConfig=('', 80)):
         self.url = self.getURL(networkConfig)
         self.stub = xmlrpc.client.ServerProxy(self.url)
         try:
@@ -17,8 +17,8 @@ class Client:
             serverMethod = getattr(self.stub, method)
             serverMethod(*args)
         except xmlrpc.client.Fault as f:
-            print(f)
-            print("Requested method not found")
+            print(f.faultString)
+            print("Requested method:", method, "not found")
         except Exception as e:
             print("Unknown error")
             print(e)

@@ -5,7 +5,7 @@ import sys
 
 
 class Client(object):
-    def __init__(self, networkConfig=('', 12345), tests=None, debug=False, name="Client"):
+    def __init__(self, networkConfig=('', 80), tests=None, debug=False, name="Client"):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(5)
         self.networkConfig = networkConfig

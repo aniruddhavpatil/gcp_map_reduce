@@ -6,7 +6,7 @@ class RequestHandler(SimpleXMLRPCRequestHandler):
 
 class Server(object):
     quit = False
-    def __init__(self, networkConfig, methods):
+    def __init__(self, networkConfig=('', 80), methods=[]):
         self.server = SimpleXMLRPCServer(
             networkConfig, requestHandler=RequestHandler, allow_none=True, logRequests=False)
         self.server.register_introspection_functions()

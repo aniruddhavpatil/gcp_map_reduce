@@ -133,8 +133,6 @@ def wait_for_operation(compute, project, zone, operation):
 # [START run]
 def main(project, zone, wait=True):
     compute = googleapiclient.discovery.build('compute', 'beta')
-    # print(list_instances(compute, project, zone))
-    # sys.exit()
     instances = [
         {
             "name": "store",
@@ -156,7 +154,7 @@ def main(project, zone, wait=True):
 
     print('Instances in project %s and zone %s:' % (project, zone))
     for instance in instances:
-        print(' - ' + instance['name'])
+        print(' - ' + instance['name'], "NetworkIP:", instance['networkInterfaces'][0]['networkIP'], "NAT IP:",instance['networkInterfaces'][0]['accessConfigs'][0]['natIP'])
 
     print("Instances created.")
 

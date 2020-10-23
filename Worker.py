@@ -1,6 +1,8 @@
 from simple_key_value_store.Client import Client as FS_client
 from utils import hash_function
 from rpc.Client import Client
+import threading
+import time
 
 class Worker:
 
@@ -17,13 +19,25 @@ class Worker:
         self.fs_client.connect()
         self.rpc = Client(networkConfig)
 
+    def heartbeat(self):
+        while True:
+            self.rpc.run('heartbeat', self.task_id, self.task_type)
+            time.sleep(2)
+
+    def start_heartbeat(self):
+        t = threading.Thread(target=self.heartbeat)
+        t.start()
+
     def run(self):
         try:
             if(self.task_type == 'map'):
+                self.start_heartbeat()
                 self.map()
             elif(self.task_type == 'reduce'):
+                self.start_heartbeat()
                 self.reduce()
         except:
+            print("Something went wrong")
             self.rpc.run('fault', self.task_id, self.task_type)
 
     def emit_intermediate(self, key, value):
@@ -42,9 +56,10 @@ class Worker:
             data = self.fs_client.get(f)
             processed_data = self.function(f, data)
             for i, (k,v) in enumerate(processed_data):
-                print(self.task_type + str(self.task_id) + ':' + 'Emitting intermediate data', i+1, 'of', len(processed_data))
+                # print(self.task_type + str(self.task_id) + ':' + 'Emitting intermediate data', i+1, 'of', len(processed_data))
 
                 self.emit_intermediate(k,v)
+        self.rpc.run('signal_complete', self.task_id, self.task_type)
         
 
     def reduce(self):
@@ -60,7 +75,8 @@ class Worker:
         processed_data = self.function(tuple_data)
         for i, (k, v) in enumerate(processed_data):
             self.emit(k, v)
-            print(self.task_type + str(self.task_id) + ':' + 'Emitting data', i+1, 'of', len(processed_data))
+            # print(self.task_type + str(self.task_id) + ':' + 'Emitting data', i+1, 'of', len(processed_data))
+        self.rpc.run('signal_complete', self.task_id, self.task_type)
 
 if __name__ == "__main__":
     mapper = Worker('id', 'ip', 'op', 'func')

@@ -10,7 +10,7 @@ from utils import clear_store
 
 class Master:
     def __init__(self, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
-        self.server = Server(networkConfig, [self.fault, *methods])
+        self.server = Server(networkConfig, [self.signal_complete, self.heartbeat, self.fault, *methods])
         self.n_mappers = n_mappers
         self.n_reducers = n_reducers
 
@@ -24,9 +24,12 @@ class Master:
         self.fs_client = FS_client()
         self.fs_client.connect()
         self.file_dict = {}
-        self.mappers = []
-        self.reducers = []
+        self.mappers = {}
+        self.reducers = {}
         self.splits = {}
+
+    def heartbeat(self, task_id, task_type):
+        print('Heartbeat from', task_id, task_type)
 
     def set_attribute(self, attribute, value):
         attribute = self.__getattribute__(attribute)
@@ -61,6 +64,21 @@ class Master:
         self.fs_client.set(self.output_data, '')
         self.start_reducers()
 
+    def signal_complete(self, task_id, task_type):
+        print("Signal complete", task_id, task_type)
+        print(self.mappers)
+        if task_type == 'map':
+            self.mappers[int(task_id)]["status"] = "completed"
+        elif task_type == 'reduce':
+            self.reducers[int(task_id)]["status"] = "completed"
+
+    def create_worker(self, worker, target):
+        return {
+            "worker": mp.Process(target=target),
+            "timestamp": time.time(),
+            "status": "running",
+        }
+
     def fault(self, task_id, task_type):
         if task_type == 'map':
             self.restart_map(task_id)
@@ -72,36 +90,37 @@ class Master:
         for i in range(self.n_mappers):
             worker = Worker(self.networkConfig, i, 'map', self.n_mappers,
                             self.n_reducers, self.splits[i], self.output_data, self.map_fn)
-            self.mappers.append(mp.Process(target=worker.run))
+            self.mappers[i] = self.create_worker(worker, worker.run)
 
-        for i, w in enumerate(self.mappers):
-            print('Mapper:', i, 'started')
-            w.start()
+        for key in self.mappers:
+            print('Mapper:', key, 'started')
+            self.mappers[key]["worker"].start()
 
-        for i, w in enumerate(self.mappers):
-            print('Mapper:', i, 'completed')
-            w.join()
 
     def start_reducers(self):
         print('Starting reducers')
         for i in range(self.n_reducers):
             worker = Worker(self.networkConfig, i, 'reduce',
                             self.n_mappers, self.n_reducers, None, self.output_data, self.reduce_fn)
-            self.reducers.append(mp.Process(target=worker.run))
+            self.reducers[i] = self.create_worker(worker, worker.run)
 
-        for i, w in enumerate(self.reducers):
-            print('Reducer:', i, 'started')
-            w.start()
+        for key in self.reducers:
+            print('Reducer:', key, 'started')
+            self.reducers[key]["worker"].start()
 
-        for i, w in enumerate(self.reducers):
-            print('Reducer:', i, 'completed')
-            w.join()
+        # for key in self.reducers:
+        #     print('Reducer:', key, 'completed')
+        #     self.reducers[key]["worker"].join()
 
     def restart_map(self, task_id):
         self.fs_client.set(self.splits[task_id], '')
         worker = Worker(self.networkConfig, task_id, 'map',
                         self.n_mappers, self.splits[task_id], self.output_data, self.map_fn)
         recovery = mp.Process(target=worker.run)
+        self.mappers[task_id] = {
+            "worker" : recovery,
+            "timestamp": time.time()
+        }
         recovery.start()
         recovery.join()
         
@@ -113,30 +132,54 @@ class Master:
             self.server_process.start()
             self.splits = self.input_partition([self.input_data], self.n_mappers)
             self.start_mappers()
+            while True:
+                print(self.mappers)
+                mappers_completed = True
+                for key in self.mappers:
+                    print(key, self.mappers[key]["status"])
+                    if self.mappers[key]["status"] != "completed":
+                        mappers_completed = False
+                if not mappers_completed:
+                    print("Waiting for mappers to finish")
+                    time.sleep(5)
+                else:
+                    break
             self.start_reducers()
 
         except KeyboardInterrupt:
             self.stop()
         self.stop()
 
+    def stop_process(self, process):
+        try:
+            process.terminate()
+            process.join()
+            process.close()
+        except:
+            pass
+
 
     def stop_mappers(self):
-        for i, p in enumerate(self.mappers):
+        for key in self.mappers:
+            p = self.mappers[key]
             try:
                 p.terminate()
                 p.join()
                 p.close()
             except:
                 pass
+        self.mappers = {}
 
     def stop_reducers(self):
-        for i, p in enumerate(self.reducers):
+        for key in self.reducers:
+            p = self.reducers[key]["worker"]
             try:
                 p.terminate()
                 p.join()
                 p.close()
             except:
                 pass
+        self.reducers = {}
 
     def stop(self):
         print('Stopping Master')
