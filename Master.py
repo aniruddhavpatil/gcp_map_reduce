@@ -264,11 +264,12 @@ def run_cloud():
     gcp = CloudInterface(cfg.project, cfg.zone)
     master = Master(
         gcp,
-        cfg.networkConfig,
-        cfg.methods,
-        cfg.n_mappers,
-        cfg.n_reducers,
-        cfg.map_fn, cfg.reduce_fn,
+        cfg.network_config,
+        [],
+        cfg.mapper_count,
+        cfg.reducer_count,
+        cfg.map_fn,
+        cfg.reduce_fn,
         cfg.input_data,
         cfg.output_data
     )
