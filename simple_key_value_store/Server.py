@@ -7,7 +7,7 @@ import threading
 
 
 class Server(object):
-    def __init__(self, networkConfig=('localhost', 12345), debug=False):
+    def __init__(self, networkConfig=('', 80), debug=False):
         self.networkConfig = networkConfig
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(None)

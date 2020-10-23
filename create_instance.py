@@ -26,7 +26,7 @@ def list_machine_images(compute, project):
     return result['items'] if 'items' in result else None
 
 
-def create_instance(compute, project, zone, name, bucket):
+def create_instance(compute, project, zone, name, base_image="master-image", preemptible=False):
     image_response = compute.machineImages().get(project=project, machineImage="store-image").execute()
     source_disk_image = image_response['selfLink']
 
@@ -55,12 +55,12 @@ def create_instance(compute, project, zone, name, bucket):
 
         # Specify a network interface with NAT to access the public
         # internet.
-        # 'networkInterfaces': [{
-        #     'network': 'global/networks/default',
-        #     'accessConfigs': [
-        #         {'type': 'ONE_TO_ONE_NAT', 'name': 'External NAT'}
-        #     ]
-        # }],
+        'networkInterfaces': [{
+            'network': 'global/networks/default',
+            'accessConfigs': [
+                {'type': 'ONE_TO_ONE_NAT', 'name': 'External NAT'}
+            ]
+        }],
 
         # Allow the instance to access cloud storage and logging.
         # 'serviceAccounts': [{
@@ -70,12 +70,6 @@ def create_instance(compute, project, zone, name, bucket):
         #         'https://www.googleapis.com/auth/logging.write'
         #     ]
         # }],
-        # 'scheduling': {
-        #     'preemptible': True,
-        #     'automaticRestart': False,
-        #     'onHostMaintenance': 'TERMINATE'
-        # },
-
         # Metadata is readable from the instance and allows you to
         # pass configuration from deployment scripts to instances.
         'metadata': {
@@ -84,18 +78,15 @@ def create_instance(compute, project, zone, name, bucket):
                 # instance upon startup.
                 'key': 'startup-script',
                 'value': startup_script
-            }, {
-                'key': 'url',
-                'value': image_url
-            }, {
-                'key': 'text',
-                'value': image_caption
-            }, {
-                'key': 'bucket',
-                'value': bucket
             }]
         }
     }
+    if preemptible:
+        config['scheduling'] = {
+            'preemptible': True,
+            'automaticRestart': False,
+            'onHostMaintenance': 'TERMINATE'
+        }
 
     print("Creating Instance with config:")
     pprint.pprint(config, indent=4)
@@ -143,15 +134,18 @@ def wait_for_operation(compute, project, zone, operation):
 
 
 # [START run]
-def main(project, bucket, zone, instance_name, wait=True):
+def main(project, zone, wait=True):
     compute = googleapiclient.discovery.build('compute', 'beta')
     # print(list_instances(compute, project, zone))
     # sys.exit()
-
-    print('Creating instance.')
-
-    operation = create_instance(compute, project, zone, instance_name, bucket)
-    wait_for_operation(compute, project, zone, operation['name'])
+    instances = [
+        {"name": "store", "image": "store-image"},
+        {"name": "master", "image": "master-image"},
+    ]
+    print('Creating instances.')
+    for instance in instances:
+        operation = create_instance(compute, project, zone, instance['name'], instance['image'])
+        wait_for_operation(compute, project, zone, operation['name'])
 
     instances = list_instances(compute, project, zone)
 
@@ -159,37 +153,17 @@ def main(project, bucket, zone, instance_name, wait=True):
     for instance in instances:
         print(' - ' + instance['name'])
 
-    print("""
-Instance created.
-It will take a minute or two for the instance to complete work.
-Check this URL: http://storage.googleapis.com/{}/output.png
-Once the image is uploaded press enter to delete the instance.
-""".format(bucket))
+    print("Instances created.")
 
     if wait:
         input()
 
     print('Deleting instance.')
 
-    operation = delete_instance(compute, project, zone, instance_name)
-    wait_for_operation(compute, project, zone, operation['name'])
+    for instance in instances:
+        operation = delete_instance(compute, project, zone, instance['name'])
+        wait_for_operation(compute, project, zone, operation['name'])
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('project_id', help='Your Google Cloud project ID.')
-    parser.add_argument(
-        'bucket_name', help='Your Google Cloud Storage bucket name.')
-    parser.add_argument(
-        '--zone',
-        default='us-central1-f',
-        help='Compute Engine zone to deploy to.')
-    parser.add_argument(
-        '--name', default='demo-instance', help='New instance name.')
-
-    args = parser.parse_args()
-
-    main(args.project_id, args.bucket_name, args.zone, args.name)
-# [END run]
+    main('mapreduce-293315', 'us-central1-f')

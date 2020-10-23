@@ -119,7 +119,7 @@ class Client(object):
 
 
 if __name__ == '__main__':
-    client = Client(networkConfig=('34.71.5.74', 12345))
+    client = Client(networkConfig=(sys.argv[1], int(sys.argv[2])))
     client.connect()
     # client.get('key24')
     # client.append('key24', 'lol2')
