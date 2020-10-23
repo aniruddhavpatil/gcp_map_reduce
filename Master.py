@@ -72,6 +72,7 @@ class ProcessFactory:
 
 class Master:
     def __init__(self, gcp, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
+        self.gcp = gcp
         self.server = Server(networkConfig, [self.signal_complete, self.heartbeat, self.fault, *methods])
         self.n_mappers = n_mappers
         self.n_reducers = n_reducers
@@ -101,8 +102,6 @@ class Master:
 
 
     def input_partition(self, files, n):
-        for f in files:
-            self.fs_client.set(f, open(f, 'r').read())
         for f in files:
             data = self.fs_client.get(f)
             total_size = len(data)
@@ -177,9 +176,14 @@ class Master:
         recovery.start()
     
     def init_fs_client(self):
-        fs_client_ip = self.gcp.get_ip_from_name('store')
+        fs_client_ip = self.gcp.get_ip_from_name('store', True)
+        print('Store found at', fs_client_ip)
         self.fs_client = FS_client((fs_client_ip, 80))
         self.fs_client.connect()
+        print(self.fs_client.get('key24'))
+        print(self.fs_client.set('key24', 'adsfasdfds'))
+        print(self.fs_client.get('key24'))
+
 
     def run(self):
         try:
@@ -273,7 +277,6 @@ def run_cloud():
         cfg.input_data,
         cfg.output_data
     )
-    master.init()
     master.run()
     
 
