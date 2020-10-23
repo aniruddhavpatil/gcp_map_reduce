@@ -9,6 +9,9 @@ from utils import clear_store
 import threading
 import sys
 
+from GCP import CloudInterface
+from Configuration import Config
+
 class ProcessFactoryElement:
     def __init__(self, process_id, process):
         self.timestamp = time.time()
@@ -68,7 +71,7 @@ class ProcessFactory:
             print(key, process.status)
 
 class Master:
-    def __init__(self, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
+    def __init__(self, gcp, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
         self.server = Server(networkConfig, [self.signal_complete, self.heartbeat, self.fault, *methods])
         self.n_mappers = n_mappers
         self.n_reducers = n_reducers
@@ -80,7 +83,7 @@ class Master:
         self.reduce_fn = reduce_fn
         self.networkConfig = networkConfig
         self.base_dir = os.getcwd()
-        self.fs_client = FS_client()
+        self.fs_client = None
         self.fs_client.connect()
         self.file_dict = {}
         self.mappers = {}
@@ -99,6 +102,8 @@ class Master:
 
 
     def input_partition(self, files, n):
+        for f in files:
+            self.fs_client.set(f, open(f, 'r').read())
         for f in files:
             data = self.fs_client.get(f)
             total_size = len(data)
@@ -164,22 +169,6 @@ class Master:
             print("Incorrect argument provided:", task_type)
 
 
-
-    def start_reducers(self):
-        print('Starting reducers')
-        for i in range(self.n_reducers):
-            worker = Worker(self.networkConfig, i, 'reduce',
-                            self.n_mappers, self.n_reducers, None, self.output_data, self.reduce_fn)
-            self.reducers[i] = self.create_worker(worker, worker.run)
-
-        for key in self.reducers:
-            print('Reducer:', key, 'started')
-            self.reducers[key]["worker"].start()
-
-        # for key in self.reducers:
-        #     print('Reducer:', key, 'completed')
-        #     self.reducers[key]["worker"].join()
-
     def restart_map(self, task_id):
         self.fs_client.set(self.splits[task_id], '')
         worker = Worker(self.networkConfig, task_id, 'map',
@@ -187,14 +176,19 @@ class Master:
         recovery = self.create_worker(worker, worker.run)
         self.mappers[task_id] = recovery
         recovery.start()
-        
+    
+    def init_fs_client(self):
+        fs_client_ip = self.gcp.get_ip_from_name('store')
+        self.fs_client = FS_client((fs_client_ip, 80))
 
     def run(self):
         try:
+            self.init_fs_client()
             self.server_process = threading.Thread(target=self.server.run)
             print('Starting Master')
             self.server_process.start()
             self.splits = self.input_partition([self.input_data], self.n_mappers)
+            ## TODO: cloud factory
             self.start_workers('map')
             while True:
                 mappers_completed = self.factory.check_process_completion_by_type('map')
@@ -256,7 +250,7 @@ class Master:
 def myFunc(i):
     print(i)
 
-def main():
+def run_local():
     module = importlib.import_module('word_count_map')
     map_fn = getattr(module, 'map_fn')
     module = importlib.import_module('word_count_reduce')
@@ -264,5 +258,24 @@ def main():
     master = Master(('', 80), [myFunc], 4, 4, map_fn, reduce_fn)
     # master.run()
 
+def run_cloud():
+    cfg = Config('config.json')
+    cfg.parse()
+    gcp = CloudInterface(cfg.project, cfg.zone)
+    master = Master(
+        gcp,
+        cfg.networkConfig,
+        cfg.methods,
+        cfg.n_mappers,
+        cfg.n_reducers,
+        cfg.map_fn, cfg.reduce_fn,
+        cfg.input_data,
+        cfg.output_data
+    )
+    master.init()
+    master.run()
+    
+
 if __name__ == "__main__":
-    main()
+    run_cloud()
+

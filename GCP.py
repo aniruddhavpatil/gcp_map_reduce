@@ -26,6 +26,17 @@ class CloudInterface:
         result = self.compute.images().list(project=self.project).execute()
         return result['items'] if 'items' in result else None
 
+    def get_ip_from_name(self, name, NAT=False):
+        self.update_instances()
+        try:
+            if NAT:
+                return self.instances[name]['networkInterfaces'][0]['accessConfigs'][0]['natIP']
+            else:
+                return self.instances[name]['networkInterfaces'][0]['networkIP']
+        except:
+            print('Something went wrong fetching IP')
+            return None
+
 
     def list_machine_images(self):
         result = self.compute.machineImages().list(project=self.project).execute()
@@ -166,7 +177,7 @@ def main(project, zone, wait=True):
 
     print('Instances in project %s and zone %s:' % (project, zone))
     for instance in instances:
-        print(' - ' + instance['name'], "NetworkIP:", instance['networkInterfaces'][0]['networkIP'], "NAT IP:",instance['networkInterfaces'][0]['accessConfigs'][0]['natIP'])
+        print(' - ' + instance['name'], "NetworkIP:", gcp.get_ip_from_name(instance['name']), "NAT IP:",gcp.get_ip_from_name(instance['name'], True))
 
     print("Instances created.")
 
