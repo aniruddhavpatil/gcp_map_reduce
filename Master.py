@@ -84,7 +84,6 @@ class Master:
         self.networkConfig = networkConfig
         self.base_dir = os.getcwd()
         self.fs_client = None
-        self.fs_client.connect()
         self.file_dict = {}
         self.mappers = {}
         self.reducers = {}
@@ -180,6 +179,7 @@ class Master:
     def init_fs_client(self):
         fs_client_ip = self.gcp.get_ip_from_name('store')
         self.fs_client = FS_client((fs_client_ip, 80))
+        self.fs_client.connect()
 
     def run(self):
         try:
