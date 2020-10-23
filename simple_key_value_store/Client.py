@@ -5,7 +5,7 @@ import sys
 
 
 class Client(object):
-    def __init__(self, networkConfig=('localhost', 12345), tests=None, debug=False, name="Client"):
+    def __init__(self, networkConfig=('', 12345), tests=None, debug=False, name="Client"):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.settimeout(5)
         self.networkConfig = networkConfig
@@ -108,7 +108,7 @@ class Client(object):
         # print('message', message)
         self.send(message)
         response = self.receive()
-        # print(response)
+        print(response)
     
     def append(self, key, value):
         message = self.createMessage('append', key=key, value=value)
@@ -121,7 +121,8 @@ class Client(object):
 if __name__ == '__main__':
     client = Client(networkConfig=(sys.argv[1], int(sys.argv[2])))
     client.connect()
-    # client.get('key24')
+    client.set('key24', 'asdfasdf')
+    print(client.get('key24'))
     # client.append('key24', 'lol2')
     # print(client.get('key24'))
     # client.run()

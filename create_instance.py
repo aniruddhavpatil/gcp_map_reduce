@@ -26,15 +26,13 @@ def list_machine_images(compute, project):
     return result['items'] if 'items' in result else None
 
 
-def create_instance(compute, project, zone, name, base_image="master-image", preemptible=False):
-    image_response = compute.machineImages().get(project=project, machineImage="store-image").execute()
+def create_instance(compute, project, zone, name, base_image="master-image", preemptible=False, init_script="master.sh"):
+    image_response = compute.machineImages().get(project=project, machineImage=base_image).execute()
     source_disk_image = image_response['selfLink']
 
     # Configure the machine
     machine_type = "zones/%s/machineTypes/e2-micro" % zone
-    startup_script = open(
-        os.path.join(
-            os.path.dirname(__file__), 'startup-script.sh'), 'r').read()
+    startup_script = open(os.path.join(os.getcwd(), 'scripts', init_script), 'r').read()
     image_url = "http://storage.googleapis.com/gce-demo-input/photo.jpg"
     image_caption = "Ready for dessert?"
 
@@ -90,7 +88,6 @@ def create_instance(compute, project, zone, name, base_image="master-image", pre
 
     print("Creating Instance with config:")
     pprint.pprint(config, indent=4)
-    # sys.exit()
 
     return compute.instances().insert(
         project=project,
@@ -139,12 +136,20 @@ def main(project, zone, wait=True):
     # print(list_instances(compute, project, zone))
     # sys.exit()
     instances = [
-        {"name": "store", "image": "store-image"},
-        {"name": "master", "image": "master-image"},
+        {
+            "name": "store",
+            "image": "store-image",
+            "init-script": "store.sh"
+        },
+        {
+            "name": "master",
+            "image": "master-image",
+            "init-script": "master.sh"
+        },
     ]
     print('Creating instances.')
     for instance in instances:
-        operation = create_instance(compute, project, zone, instance['name'], instance['image'])
+        operation = create_instance(compute, project, zone, instance['name'], instance['image'], False, instance['init-script'])
         wait_for_operation(compute, project, zone, operation['name'])
 
     instances = list_instances(compute, project, zone)

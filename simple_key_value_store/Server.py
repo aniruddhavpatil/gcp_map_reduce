@@ -143,9 +143,28 @@ class Server(object):
                 if connection:
                     connection.close()
                 break
+            except:
+                pass
         return
 
+    def check_store(self):
+        return 'store' in os.listdir(os.getcwd())
+
+    def create_store(self):
+        try:
+            print('Initializing store')
+            os.mkdir(os.path.join(os.getcwd(), 'store'))
+            return True
+        except:
+            print('Something went wrong when initializing the store.')
+        return False
+
     def run(self):
+        if not self.check_store():
+            print('Store not found')
+            if not self.create_store():
+                sys.exit()
+
         self.socket.listen(5)
         print("Socket is listening at", self.networkConfig)
         while True:
