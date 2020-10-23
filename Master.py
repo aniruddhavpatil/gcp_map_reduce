@@ -176,7 +176,7 @@ class Master:
         recovery.start()
     
     def init_fs_client(self):
-        fs_client_ip = self.gcp.get_ip_from_name('store', True)
+        fs_client_ip = self.gcp.get_ip_from_name('store')
         print('Store found at', fs_client_ip)
         self.fs_client = FS_client((fs_client_ip, 80))
         self.fs_client.connect()
