@@ -3,6 +3,7 @@ from utils import hash_function
 from rpc.Client import Client
 import threading
 import time
+import sys
 
 class Worker:
 
@@ -18,27 +19,47 @@ class Worker:
         self.fs_client = FS_client()
         self.fs_client.connect()
         self.rpc = Client(networkConfig)
+        self.heartbeat = None
+        self.complete = False
 
-    def heartbeat(self):
-        while True:
+    def heartbeat_thread(self):
+        while not self.complete:
             self.rpc.run('heartbeat', self.task_id, self.task_type)
             time.sleep(2)
 
     def start_heartbeat(self):
-        t = threading.Thread(target=self.heartbeat)
-        t.start()
+        self.heartbeat = threading.Thread(target=self.heartbeat_thread)
+        self.heartbeat.start()
+
+    def stop_heartbeat(self):
+        self.complete = True
+        while self.heartbeat.is_alive():
+            print("Stopping hearbeat", self.task_id, self.task_type)
+            self.heartbeat.join(5)
+        return
+
+    def init(self):
+        self.start_heartbeat()
+
+    def stop(self):
+        self.stop_heartbeat()
+        self.rpc.run('signal_complete', self.task_id, self.task_type)
+
 
     def run(self):
-        try:
-            if(self.task_type == 'map'):
-                self.start_heartbeat()
-                self.map()
-            elif(self.task_type == 'reduce'):
-                self.start_heartbeat()
-                self.reduce()
-        except:
-            print("Something went wrong")
-            self.rpc.run('fault', self.task_id, self.task_type)
+        # try:
+        self.init()
+        if(self.task_type == 'map'):
+            self.map()
+
+        elif(self.task_type == 'reduce'):
+            self.reduce()
+
+        self.stop()
+        # except:
+        #     print("Something went wrong")
+        #     sys.exit()
+            # self.rpc.run('fault', self.task_id, self.task_type)
 
     def emit_intermediate(self, key, value):
         hash_value = hash_function(key, self.n_reducers)
@@ -59,7 +80,6 @@ class Worker:
                 # print(self.task_type + str(self.task_id) + ':' + 'Emitting intermediate data', i+1, 'of', len(processed_data))
 
                 self.emit_intermediate(k,v)
-        self.rpc.run('signal_complete', self.task_id, self.task_type)
         
 
     def reduce(self):
@@ -76,7 +96,6 @@ class Worker:
         for i, (k, v) in enumerate(processed_data):
             self.emit(k, v)
             # print(self.task_type + str(self.task_id) + ':' + 'Emitting data', i+1, 'of', len(processed_data))
-        self.rpc.run('signal_complete', self.task_id, self.task_type)
 
 if __name__ == "__main__":
     mapper = Worker('id', 'ip', 'op', 'func')

@@ -6,7 +6,44 @@ from simple_key_value_store.Client import Client as FS_client
 from Worker import Worker
 import importlib
 from utils import clear_store
+import threading
+import sys
 
+class ProcessFactoryElement:
+    def __init__(self, process_id, process):
+        self.timestamp = time.time()
+        self.process = process
+        self.process_id = process_id
+        self.max_wait_time = 5
+        self.status = "initialized"
+
+    def start(self):
+        self.process.start()
+        self.status = "running"
+    
+    def stop(self):
+        self.process.join(self.max_wait_time)
+        if self.process.is_alive():
+            self.process.terminate()
+            self.process.close()
+        self.status = "completed"
+
+
+class ProcessFactory:
+    def __init__(self):
+        self.processes = {}
+
+    def get_pid(self, task_type, task_id):
+        pid = str(task_type) + str(task_id)
+        return pid
+
+    def create_process(self, task_type, task_id, worker):
+        pid = self.get_pid(task_type, task_id)
+        self.processes[process_id] = ProcessFactoryElement(pid, mp.Process(target=worker.run))
+    
+    def start_process(self, task_type, task_id):
+        pid = self.get_pid(task_type, task_id)
+        self.processes[pid].start()
 
 class Master:
     def __init__(self, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
@@ -27,9 +64,11 @@ class Master:
         self.mappers = {}
         self.reducers = {}
         self.splits = {}
+        self.factory = ProcessFactory()
 
     def heartbeat(self, task_id, task_type):
         print('Heartbeat from', task_id, task_type)
+
 
     def set_attribute(self, attribute, value):
         attribute = self.__getattribute__(attribute)
@@ -66,7 +105,7 @@ class Master:
 
     def signal_complete(self, task_id, task_type):
         print("Signal complete", task_id, task_type)
-        print(self.mappers)
+        # print(self.mappers)
         if task_type == 'map':
             self.mappers[int(task_id)]["status"] = "completed"
         elif task_type == 'reduce':
@@ -116,84 +155,84 @@ class Master:
         self.fs_client.set(self.splits[task_id], '')
         worker = Worker(self.networkConfig, task_id, 'map',
                         self.n_mappers, self.splits[task_id], self.output_data, self.map_fn)
-        recovery = mp.Process(target=worker.run)
-        self.mappers[task_id] = {
-            "worker" : recovery,
-            "timestamp": time.time()
-        }
+        recovery = self.create_worker(worker, worker.run)
+        self.mappers[task_id] = recovery
         recovery.start()
-        recovery.join()
         
 
     def run(self):
         try:
-            self.server_process = mp.Process(target=self.server.run)
+            self.server_process = threading.Thread(target=self.server.run)
             print('Starting Master')
             self.server_process.start()
             self.splits = self.input_partition([self.input_data], self.n_mappers)
             self.start_mappers()
             while True:
-                print(self.mappers)
+                # print(self.mappers)
                 mappers_completed = True
                 for key in self.mappers:
                     print(key, self.mappers[key]["status"])
                     if self.mappers[key]["status"] != "completed":
                         mappers_completed = False
+
                 if not mappers_completed:
                     print("Waiting for mappers to finish")
                     time.sleep(5)
                 else:
                     break
+            # self.stop_mappers()
             self.start_reducers()
+            while True:
+                print(self.reducers)
+                reducers_completed = True
+                for key in self.reducers:
+                    print(key, self.reducers[key]["status"])
+                    if self.reducers[key]["status"] != "completed":
+                        reducers_completed = False
+                if not reducers_completed:
+                    print("Waiting for reducers to finish")
+                    time.sleep(5)
+                else:
+                    break
+            self.stop_reducers()
 
         except KeyboardInterrupt:
             self.stop()
         self.stop()
 
     def stop_process(self, process):
-        try:
+        process.join(5)
+        if process.is_alive():
             process.terminate()
-            process.join()
             process.close()
-        except:
-            pass
 
 
     def stop_mappers(self):
         for key in self.mappers:
-            p = self.mappers[key]
-            try:
-                p.terminate()
-                p.join()
-                p.close()
-            except:
-                pass
+            p = self.mappers[key]["worker"]
+            self.stop_process(p)
         self.mappers = {}
 
     def stop_reducers(self):
         for key in self.reducers:
             p = self.reducers[key]["worker"]
-            try:
-                p.terminate()
-                p.join()
-                p.close()
-            except:
-                pass
+            self.stop_process(p)
         self.reducers = {}
 
     def stop(self):
-        print('Stopping Master')
-
+        print("Stopping mappers")
         self.stop_mappers()
+        print("Stopping reducers")
         self.stop_reducers()
         
+        print("Stopping RPC sercer")
         try:
             self.server.kill()
-            self.server_process.terminate()
-            self.server_process.join()
-            self.server_process.close()
+            self.server_process.join(5)
         except:
             pass
+        print('Stopping Master')
+        sys.exit()
 
 def myFunc(i):
     print(i)
