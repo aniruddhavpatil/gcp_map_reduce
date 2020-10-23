@@ -17,17 +17,19 @@ class ProcessFactoryElement:
         self.max_wait_time = 5
         self.status = "initialized"
 
+    def is_complete(self):
+        return self.status == "completed"
+
     def start(self):
         self.process.start()
         self.status = "running"
     
     def stop(self):
-        self.process.join(self.max_wait_time)
-        if self.process.is_alive():
+        self.status = "completed"
+        self.process.join(1)
+        while self.process.is_alive():
             self.process.terminate()
             self.process.close()
-        self.status = "completed"
-
 
 class ProcessFactory:
     def __init__(self):
@@ -39,11 +41,31 @@ class ProcessFactory:
 
     def create_process(self, task_type, task_id, worker):
         pid = self.get_pid(task_type, task_id)
-        self.processes[process_id] = ProcessFactoryElement(pid, mp.Process(target=worker.run))
+        self.processes[pid] = ProcessFactoryElement(pid, mp.Process(target=worker.run))
     
     def start_process(self, task_type, task_id):
         pid = self.get_pid(task_type, task_id)
         self.processes[pid].start()
+
+    def end_process(self, task_type, task_id):
+        pid = self.get_pid(task_type, task_id)
+        t = threading.Thread(target=self.processes[pid].stop())
+        t.start()
+
+    def check_process_completion_by_type(self, task_type):
+        if len(self.processes) > 0:
+            for key in self.processes:
+                if task_type in key:
+                    if not self.processes[key].is_complete():
+                        return False
+        else:
+            print('No process has been started as of now.')
+        return True
+
+    def print_status(self):
+        for key in self.processes:
+            process = self.processes[key]
+            print(key, process.status)
 
 class Master:
     def __init__(self, networkConfig, methods, n_mappers, n_reducers, map_fn, reduce_fn, input_data, output_data):
@@ -105,11 +127,8 @@ class Master:
 
     def signal_complete(self, task_id, task_type):
         print("Signal complete", task_id, task_type)
-        # print(self.mappers)
-        if task_type == 'map':
-            self.mappers[int(task_id)]["status"] = "completed"
-        elif task_type == 'reduce':
-            self.reducers[int(task_id)]["status"] = "completed"
+        self.factory.end_process(task_type, task_id)
+        
 
     def create_worker(self, worker, target):
         return {
@@ -124,16 +143,26 @@ class Master:
         elif task_type == 'reduce':
             self.restart_reducers()
 
-    def start_mappers(self):
-        print('Starting mappers')
-        for i in range(self.n_mappers):
-            worker = Worker(self.networkConfig, i, 'map', self.n_mappers,
-                            self.n_reducers, self.splits[i], self.output_data, self.map_fn)
-            self.mappers[i] = self.create_worker(worker, worker.run)
+    def start_workers(self, task_type):
+        if task_type == 'map':
+            passed_function = self.map_fn
+            count = self.n_mappers
+        elif task_type == 'reduce':
+            passed_function = self.reduce_fn
+            count = self.n_reducers
+        print('Starting workers of type', task_type)
 
-        for key in self.mappers:
-            print('Mapper:', key, 'started')
-            self.mappers[key]["worker"].start()
+        if passed_function and count:
+            for task_id in range(count):
+                files = self.splits[task_id] if task_type == 'map' else None
+                worker = Worker(self.networkConfig, task_id, task_type, self.n_mappers,
+                                self.n_reducers, files, self.output_data, passed_function)
+
+                self.factory.create_process(task_type, task_id, worker)
+                self.factory.start_process(task_type, task_id)
+        else:
+            print("Incorrect argument provided:", task_type)
+
 
 
     def start_reducers(self):
@@ -166,43 +195,33 @@ class Master:
             print('Starting Master')
             self.server_process.start()
             self.splits = self.input_partition([self.input_data], self.n_mappers)
-            self.start_mappers()
+            self.start_workers('map')
             while True:
-                # print(self.mappers)
-                mappers_completed = True
-                for key in self.mappers:
-                    print(key, self.mappers[key]["status"])
-                    if self.mappers[key]["status"] != "completed":
-                        mappers_completed = False
-
+                mappers_completed = self.factory.check_process_completion_by_type('map')
                 if not mappers_completed:
                     print("Waiting for mappers to finish")
+                    self.factory.print_status()
                     time.sleep(5)
                 else:
                     break
-            # self.stop_mappers()
-            self.start_reducers()
+            self.start_workers('reduce')
             while True:
-                print(self.reducers)
-                reducers_completed = True
-                for key in self.reducers:
-                    print(key, self.reducers[key]["status"])
-                    if self.reducers[key]["status"] != "completed":
-                        reducers_completed = False
+                reducers_completed = self.factory.check_process_completion_by_type('reduce')
                 if not reducers_completed:
                     print("Waiting for reducers to finish")
+                    self.factory.print_status()
                     time.sleep(5)
                 else:
                     break
-            self.stop_reducers()
+            # self.stop_reducers()
 
         except KeyboardInterrupt:
             self.stop()
         self.stop()
 
     def stop_process(self, process):
-        process.join(5)
-        if process.is_alive():
+        process.join(1)
+        while process.is_alive():
             process.terminate()
             process.close()
 
@@ -228,7 +247,7 @@ class Master:
         print("Stopping RPC sercer")
         try:
             self.server.kill()
-            self.server_process.join(5)
+            self.stop_process(self.server_process)
         except:
             pass
         print('Stopping Master')
@@ -242,7 +261,7 @@ def main():
     map_fn = getattr(module, 'map_fn')
     module = importlib.import_module('word_count_reduce')
     reduce_fn = getattr(module, 'reduce_fn')
-    master = Master(('localhost', 8000), [myFunc], 4, 4, map_fn, reduce_fn)
+    master = Master(('', 80), [myFunc], 4, 4, map_fn, reduce_fn)
     # master.run()
 
 if __name__ == "__main__":
