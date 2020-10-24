@@ -4,23 +4,27 @@ from rpc.Client import Client
 import threading
 import time
 import sys
+from Configuration import Config
+from GCP import CloudInterface
 
 class Worker:
 
-    def __init__(self, networkConfig,task_id, task_type, n_mappers, n_reducers, files, output_location, function):
+    def __init__(self, networkConfig, n_mappers, n_reducers, output_location):
         self.networkConfig = networkConfig
-        self.task_id = task_id
-        self.task_type = task_type
         self.n_mappers = n_mappers
         self.n_reducers = n_reducers
+        self.output_location = output_location
+        self.heartbeat = None
+        self.complete = False
+
+    def init(self):
+        self.task_id = task_id
+        self.task_type = task_type
         self.files = files
         self.function = function
-        self.output_location = output_location
         self.fs_client = FS_client()
         self.fs_client.connect()
         self.rpc = Client(networkConfig)
-        self.heartbeat = None
-        self.complete = False
 
     def heartbeat_thread(self):
         while not self.complete:
@@ -96,7 +100,19 @@ class Worker:
         for i, (k, v) in enumerate(processed_data):
             self.emit(k, v)
             # print(self.task_type + str(self.task_id) + ':' + 'Emitting data', i+1, 'of', len(processed_data))
+    
+def run_cloud():
+    cfg = Config('config.json')
+    cfg.parse()
+    worker = Worker(
+        cfg.network_config,
+        cfg.mapper_count,
+        cfg.reducer_count,
+        cfg.output_data
+    )
+    print('CFG parsed and worker initialized')
+    worker.init()
+    worker.run()
 
 if __name__ == "__main__":
-    mapper = Worker('id', 'ip', 'op', 'func')
-    mapper.run()
+    run_cloud()

@@ -34,6 +34,7 @@ class ProcessFactoryElement:
             self.process.terminate()
             self.process.close()
 
+
 class ProcessFactory:
     def __init__(self):
         self.processes = {}
@@ -103,6 +104,7 @@ class Master:
 
     def input_partition(self, files, n):
         for f in files:
+            print('Fetching data from', f)
             data = self.fs_client.get(f)
             total_size = len(data)
             split_size = total_size // n
@@ -146,6 +148,10 @@ class Master:
         elif task_type == 'reduce':
             self.restart_reducers()
 
+    def get_pid(self, task_type, task_id):
+        pid = str(task_type) + str(task_id)
+        return pid
+
     def start_workers(self, task_type):
         if task_type == 'map':
             passed_function = self.map_fn
@@ -157,14 +163,10 @@ class Master:
 
         if passed_function and count:
             for task_id in range(count):
-                files = self.splits[task_id] if task_type == 'map' else None
-                worker = Worker(self.networkConfig, task_id, task_type, self.n_mappers,
-                                self.n_reducers, files, self.output_data, passed_function)
-
-                self.factory.create_process(task_type, task_id, worker)
-                self.factory.start_process(task_type, task_id)
-        else:
-            print("Incorrect argument provided:", task_type)
+                # files = self.splits[task_id] if task_type == 'map' else None
+                pid = self.get_pid(task_type, task_id)
+                operation = self.gcp.create_instance(pid, init_script="worker.sh", preemptible=True)
+                self.gcp.wait_for_operation(operation['name'])
 
 
     def restart_map(self, task_id):
@@ -176,13 +178,13 @@ class Master:
         recovery.start()
     
     def init_fs_client(self):
-        fs_client_ip = self.gcp.get_ip_from_name('store')
+        fs_client_ip = self.gcp.get_ip_from_name('store', True)
         print('Store found at', fs_client_ip)
         self.fs_client = FS_client((fs_client_ip, 80))
         self.fs_client.connect()
         print(self.fs_client.get('key24'))
-        print(self.fs_client.set('key24', 'adsfasdfds'))
-        print(self.fs_client.get('key24'))
+        # print(self.fs_client.set('key24', 'adsfasdfds'))
+        # print(self.fs_client.get('key24'))
 
 
     def run(self):
@@ -192,27 +194,24 @@ class Master:
             print('Starting Master')
             self.server_process.start()
             self.splits = self.input_partition([self.input_data], self.n_mappers)
-            ## TODO: cloud factory
+            ## TODO: cloud worker factory
             self.start_workers('map')
-            while True:
-                mappers_completed = self.factory.check_process_completion_by_type('map')
-                if not mappers_completed:
-                    print("Waiting for mappers to finish")
-                    self.factory.print_status()
-                    time.sleep(5)
-                else:
-                    break
+            self.gcp.update_instances()
+            for key in self.gcp.instances:
+                val = self.gcp.instances[key]
+                print('Running:', key, self.gcp.get_ip_from_name(key))
+            # time.sleep(60)
+            self.stop_instances()
             self.start_workers('reduce')
-            while True:
-                reducers_completed = self.factory.check_process_completion_by_type('reduce')
-                if not reducers_completed:
-                    print("Waiting for reducers to finish")
-                    self.factory.print_status()
-                    time.sleep(5)
-                else:
-                    break
-            # self.stop_reducers()
-
+            time.sleep(30)
+            self.gcp.update_instances()
+            print(list(self.gcp.instances.keys()))
+            for key in self.gcp.instances:
+                val = self.gcp.instances[key]
+                print('Running:', key, self.gcp.get_ip_from_name(key))
+            # time.sleep(60)
+            self.stop_instances()
+            
         except KeyboardInterrupt:
             self.stop()
         self.stop()
@@ -250,6 +249,13 @@ class Master:
             pass
         print('Stopping Master')
         sys.exit()
+
+    def stop_instances(self):
+        self.gcp.update_instances()
+        for key in self.gcp.instances:
+            if 'map' in key or 'reduce' in key:
+                operation = self.gcp.delete_instance(key)
+                self.gcp.wait_for_operation(operation['name'])
 
 def myFunc(i):
     print(i)
