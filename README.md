@@ -1,4 +1,7 @@
 # Map Reduce on the Google Cloud Platform
+
+![system design of the map-reduce system](https://github.com/aniruddhavpatil/gcp_map_reduce/blob/master/gcp_diagram.jpg)
+
 ## Main Entities
 1. Store
 1. Master
